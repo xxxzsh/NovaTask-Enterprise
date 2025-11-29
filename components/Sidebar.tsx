@@ -1,17 +1,16 @@
 import React from 'react';
-import { LayoutDashboard, FolderKanban, CheckCircle2, Settings, Plus, Hexagon } from 'lucide-react';
-import { TabView } from '../types';
-import { MOCK_USERS } from '../constants';
+import { LayoutDashboard, FolderKanban, CheckCircle2, Settings, Plus, Hexagon, LogOut } from 'lucide-react';
+import { TabView, User } from '../types';
 
 interface SidebarProps {
   currentTab: TabView;
   onChangeTab: (tab: TabView) => void;
   onNewTask: () => void;
+  currentUser: User;
+  onLogout: () => void;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ currentTab, onChangeTab, onNewTask }) => {
-  const currentUser = MOCK_USERS[0]; // Simulate xxxzsh logged in
-
+export const Sidebar: React.FC<SidebarProps> = ({ currentTab, onChangeTab, onNewTask, currentUser, onLogout }) => {
   const navItems: { id: TabView; label: string; icon: React.ReactNode }[] = [
     { id: 'dashboard', label: '工作台', icon: <LayoutDashboard size={20} /> },
     { id: 'projects', label: '项目试图', icon: <FolderKanban size={20} /> },
@@ -19,7 +18,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, onChangeTab, onNew
   ];
 
   return (
-    <div className="w-64 h-screen bg-white/80 backdrop-blur-xl border-r border-slate-100 flex flex-col shadow-sm sticky top-0 left-0 z-10">
+    <div className="w-64 h-screen bg-white/80 backdrop-blur-xl border-r border-slate-100 flex flex-col shadow-sm sticky top-0 left-0 z-10 transition-all">
       <div className="p-8 pb-6">
         <div className="flex items-center gap-3 mb-10 group cursor-default">
           <div className="w-9 h-9 bg-slate-900 rounded-xl flex items-center justify-center text-white shadow-slate-200 shadow-lg transition-transform duration-500 group-hover:rotate-12">
@@ -64,16 +63,19 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, onChangeTab, onNew
       </nav>
 
       <div className="p-4 border-t border-slate-50">
-        <button className="w-full flex items-center gap-3 px-4 py-3 text-slate-400 hover:text-slate-600 transition-colors text-sm font-medium rounded-xl hover:bg-slate-50 mb-2">
-          <Settings size={20} />
-          系统设置
+        <button 
+          onClick={onLogout}
+          className="w-full flex items-center gap-3 px-4 py-3 text-slate-400 hover:text-rose-600 transition-colors text-sm font-medium rounded-xl hover:bg-slate-50 mb-2"
+        >
+          <LogOut size={20} />
+          退出登录
         </button>
         
         <div className="flex items-center gap-3 px-4 py-2 rounded-xl border border-slate-100 bg-slate-50/50">
             <img src={currentUser.avatar} className="w-8 h-8 rounded-full bg-white ring-2 ring-white" alt="Profile" />
             <div className="flex flex-col min-w-0">
                 <span className="text-xs font-bold text-slate-700 truncate">{currentUser.name}</span>
-                <span className="text-[10px] text-slate-400 truncate">{currentUser.role}</span>
+                <span className="text-[10px] text-emerald-500 font-medium">Online</span>
             </div>
         </div>
       </div>

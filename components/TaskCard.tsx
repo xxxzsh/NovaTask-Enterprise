@@ -1,141 +1,221 @@
 import React from 'react';
-import { Calendar, Check, ShieldCheck, Clock, User as UserIcon, MoreHorizontal, ArrowRight } from 'lucide-react';
-import { Task, TaskStatus, User } from '../types';
+import { Calendar, Check, ShieldCheck, Clock, ArrowRight, Flag, AlertCircle, Image as ImageIcon } from 'lucide-react';
+import { Task, TaskStatus, User, ViewMode, Priority } from '../types';
 
 interface TaskCardProps {
   task: Task;
   users: User[];
   onComplete: (id: string) => void;
   onVerify: (id: string) => void;
+  viewMode: ViewMode;
+  onClick: () => void;
+  currentUser: User;
 }
 
-export const TaskCard: React.FC<TaskCardProps> = ({ task, users, onComplete, onVerify }) => {
+export const TaskCard: React.FC<TaskCardProps> = ({ task, users, onComplete, onVerify, viewMode, onClick, currentUser }) => {
   const responsible = users.find(u => u.id === task.responsibleId);
-  const executor = users.find(u => u.id === task.executorId);
+  
+  // Map all executors
+  const executors = task.executorIds 
+    ? task.executorIds.map(id => users.find(u => u.id === id)).filter(Boolean) as User[]
+    : [];
 
   const isCompleted = task.status === TaskStatus.COMPLETED;
   const isVerified = task.status === TaskStatus.VERIFIED;
   const isPending = task.status === TaskStatus.PENDING;
 
-  // Project colors
+  // Permissions
+  const canComplete = isPending && task.executorIds?.includes(currentUser.id);
+  const canVerify = isCompleted && task.responsibleId === currentUser.id;
+
+  // Visual Helpers
   const getProjectColor = (name: string) => {
     if (name.includes('低空')) return 'bg-blue-50 text-blue-600 border-blue-100';
     if (name.includes('思政')) return 'bg-rose-50 text-rose-600 border-rose-100';
     return 'bg-slate-50 text-slate-600 border-slate-100';
   };
 
-  // Status visual config
-  const statusConfig = {
-    [TaskStatus.PENDING]: { label: '进行中', dotColor: 'bg-amber-400' },
-    [TaskStatus.COMPLETED]: { label: '待核验', dotColor: 'bg-indigo-400' },
-    [TaskStatus.VERIFIED]: { label: '已完成', dotColor: 'bg-emerald-400' },
+  const getPriorityConfig = (priority: Priority) => {
+    switch(priority) {
+      case Priority.HIGH: return { label: 'P0', color: 'text-rose-600 bg-rose-50 border-rose-100', icon: AlertCircle };
+      case Priority.MEDIUM: return { label: 'P1', color: 'text-amber-600 bg-amber-50 border-amber-100', icon: Flag };
+      default: return { label: 'P2', color: 'text-slate-500 bg-slate-100 border-slate-200', icon: Flag };
+    }
   };
 
-  const currentConfig = statusConfig[task.status];
+  const PriorityBadge = () => {
+    const config = getPriorityConfig(task.priority);
+    const Icon = config.icon;
+    return (
+      <div className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold border ${config.color}`}>
+        <Icon size={10} />
+        {config.label}
+      </div>
+    );
+  };
 
+  const ActionButtons = () => (
+    <div className="flex items-center gap-2">
+      {canComplete && (
+        <button 
+          onClick={(e) => { e.stopPropagation(); onComplete(task.id); }}
+          className="flex items-center gap-1.5 text-xs font-bold bg-white border border-slate-200 text-slate-600 px-3 py-1.5 rounded-lg hover:bg-slate-900 hover:text-white hover:border-slate-900 transition-all shadow-sm"
+        >
+          <Check size={14} />
+          完成
+        </button>
+      )}
+      {canVerify && (
+        <button 
+          onClick={(e) => { e.stopPropagation(); onVerify(task.id); }}
+          className="flex items-center gap-1.5 text-xs font-bold bg-slate-900 text-white px-3 py-1.5 rounded-lg hover:bg-emerald-600 shadow-md shadow-slate-200 transition-all hover:-translate-y-0.5"
+        >
+          <ShieldCheck size={14} />
+          核验
+        </button>
+      )}
+      {isVerified && (
+        <span className="text-emerald-600 flex items-center gap-1 text-xs font-bold bg-emerald-50 px-2.5 py-1 rounded-md border border-emerald-100">
+          <Check size={12} /> 已归档
+        </span>
+      )}
+    </div>
+  );
+
+  const AvatarGroup = () => (
+    <div className="flex items-center">
+      <div className="flex -space-x-2 mr-2">
+        {responsible ? (
+          <img src={responsible.avatar} className="w-6 h-6 rounded-full border-2 border-white ring-1 ring-slate-100" title={`核验人: ${responsible.name}`} />
+        ) : (
+          <div className="w-6 h-6 rounded-full border-2 border-white bg-slate-100 flex items-center justify-center text-[10px] text-slate-400 ring-1 ring-slate-100">?</div>
+        )}
+      </div>
+      
+      <ArrowRight size={10} className="text-slate-300 mr-2" />
+      
+      <div className="flex -space-x-2">
+        {executors.length > 0 ? (
+          executors.map((ex, i) => (
+             <img key={i} src={ex.avatar} className="w-6 h-6 rounded-full border-2 border-white ring-1 ring-slate-100" title={`执行人: ${ex.name}`} />
+          ))
+        ) : (
+          <div className="w-6 h-6 rounded-full border-2 border-white bg-slate-100 flex items-center justify-center text-[10px] text-slate-400 ring-1 ring-slate-100">?</div>
+        )}
+      </div>
+    </div>
+  );
+
+  // --- VIEW: LIST ---
+  if (viewMode === 'list') {
+    return (
+      <div 
+        onClick={onClick}
+        className={`
+        group flex items-center gap-4 p-4 bg-white border-b border-slate-50 last:border-0 hover:bg-slate-50/80 transition-all cursor-pointer
+      `}>
+        {/* Status Stripe */}
+        <div className={`w-1 h-8 rounded-full ${isVerified ? 'bg-emerald-400' : isCompleted ? 'bg-indigo-400' : 'bg-amber-400'}`}></div>
+        
+        {/* Main Info */}
+        <div className="flex-1 min-w-0 grid grid-cols-12 gap-4 items-center">
+          <div className="col-span-5">
+             <div className="flex items-center gap-2 mb-1">
+                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${getProjectColor(task.projectName)}`}>
+                  {task.projectName}
+                </span>
+                <PriorityBadge />
+             </div>
+             <h3 className={`text-sm font-bold text-slate-800 truncate`}>
+               {task.title}
+             </h3>
+          </div>
+
+          <div className="col-span-3 text-xs text-slate-500 flex items-center gap-2">
+            {task.images && task.images.length > 0 && (
+              <ImageIcon size={14} className="text-slate-400 flex-shrink-0" />
+            )}
+            <span className="truncate" title={task.description}>{task.description}</span>
+          </div>
+
+          <div className="col-span-2 flex justify-center">
+             <AvatarGroup />
+          </div>
+
+          <div className="col-span-2 flex justify-end">
+             <ActionButtons />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // --- VIEW: GRID ---
   return (
-    <div className={`
+    <div 
+      onClick={onClick}
+      className={`
       group relative bg-white rounded-2xl p-6 border border-slate-100/80 
       shadow-[0_2px_10px_-4px_rgba(6,81,237,0.05)] hover:shadow-[0_8px_30px_-6px_rgba(6,81,237,0.1)] 
       transition-all duration-300 ease-out 
-      hover:-translate-y-1
-      ${isVerified ? 'bg-slate-50/50' : 'bg-white'}
+      hover:-translate-y-1 cursor-pointer
+      ${isVerified ? 'bg-slate-50/30' : 'bg-white'}
     `}>
-      {/* Top Row: Project & Status Badge */}
       <div className="flex justify-between items-start mb-4">
-        <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full border tracking-wide uppercase ${getProjectColor(task.projectName)}`}>
-          {task.projectName}
-        </span>
+        <div className="flex gap-2">
+          <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full border tracking-wide uppercase ${getProjectColor(task.projectName)}`}>
+            {task.projectName}
+          </span>
+          <PriorityBadge />
+        </div>
         
-        {/* Animated Status Indicator */}
+        {/* Status Dot */}
         <div className="flex items-center gap-2">
            {!isVerified && (
              <span className="relative flex h-2 w-2">
-               <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${currentConfig.dotColor}`}></span>
-               <span className={`relative inline-flex rounded-full h-2 w-2 ${currentConfig.dotColor}`}></span>
+               <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${isCompleted ? 'bg-indigo-400' : 'bg-amber-400'}`}></span>
+               <span className={`relative inline-flex rounded-full h-2 w-2 ${isCompleted ? 'bg-indigo-400' : 'bg-amber-400'}`}></span>
              </span>
            )}
-           <span className={`text-xs font-semibold ${isVerified ? 'text-slate-400' : 'text-slate-600'}`}>
-             {currentConfig.label}
-           </span>
+           {isVerified && (
+             <span className="h-2 w-2 rounded-full bg-emerald-400"></span>
+           )}
         </div>
       </div>
 
-      {/* Main Content */}
-      <div className="mb-6">
-        <h3 className={`text-lg font-bold text-slate-800 mb-2 transition-colors group-hover:text-slate-900 ${isVerified ? 'text-slate-500 line-through decoration-slate-300' : ''}`}>
+      <div className="mb-6 relative">
+        <h3 className={`text-lg font-bold text-slate-800 mb-2 transition-colors group-hover:text-indigo-600`}>
           {task.title}
         </h3>
-        <p className={`text-sm text-slate-500 leading-relaxed line-clamp-2 ${isVerified ? 'text-slate-400' : ''}`}>
+        <p className={`text-sm text-slate-500 leading-relaxed line-clamp-2`}>
           {task.description}
         </p>
+        {task.images && task.images.length > 0 && (
+           <div className="absolute top-0 right-0 p-1 bg-white/80 backdrop-blur rounded-lg border border-slate-100">
+              <ImageIcon size={14} className="text-indigo-500" />
+           </div>
+        )}
       </div>
 
-      {/* Footer Info */}
       <div className="flex items-center justify-between pt-5 border-t border-slate-50">
-        <div className="flex items-center gap-5">
-          {/* People */}
-          <div className="flex items-center -space-x-2.5">
-             {responsible ? (
-               <img src={responsible.avatar} className="w-7 h-7 rounded-full border-2 border-white ring-1 ring-slate-100" title={`负责人: ${responsible.name}`} />
-             ) : (
-                <div className="w-7 h-7 rounded-full border-2 border-white bg-slate-100 flex items-center justify-center text-xs text-slate-400 ring-1 ring-slate-100">?</div>
-             )}
-             <div className="z-10 w-4 flex justify-center">
-                <ArrowRight size={10} className="text-slate-300" />
-             </div>
-             {executor ? (
-               <img src={executor.avatar} className="w-7 h-7 rounded-full border-2 border-white ring-1 ring-slate-100" title={`执行人: ${executor.name}`} />
-             ) : (
-                <div className="w-7 h-7 rounded-full border-2 border-white bg-slate-100 flex items-center justify-center text-xs text-slate-400 ring-1 ring-slate-100">?</div>
-             )}
-          </div>
-
-          {/* Dates */}
+        <div className="flex items-center gap-4">
+          <AvatarGroup />
           <div className="flex flex-col">
             {task.dueDate && !isVerified && (
               <div className="flex items-center gap-1.5 text-slate-400 text-xs font-medium">
                 <Calendar size={12} />
-                <span>{new Date(task.dueDate).toLocaleDateString()} 截止</span>
+                <span>{new Date(task.dueDate).toLocaleDateString()}</span>
               </div>
             )}
-            {task.completedAt && (isCompleted || isVerified) && (
+             {task.completedAt && (isCompleted || isVerified) && (
               <div className="flex items-center gap-1.5 text-emerald-600/80 text-xs font-medium">
                 <Clock size={12} />
-                <span>{new Date(task.completedAt).toLocaleDateString()} 完成</span>
+                <span>{new Date(task.completedAt).toLocaleDateString()}</span>
               </div>
             )}
           </div>
         </div>
-
-        {/* Action Buttons */}
-        <div>
-          {isPending && (
-            <button 
-              onClick={() => onComplete(task.id)}
-              className="flex items-center gap-1.5 text-xs font-bold bg-white border border-slate-200 text-slate-600 px-4 py-2 rounded-lg hover:bg-slate-900 hover:text-white hover:border-slate-900 transition-all shadow-sm"
-            >
-              <Check size={14} />
-              执行完成
-            </button>
-          )}
-
-          {isCompleted && (
-            <button 
-              onClick={() => onVerify(task.id)}
-              className="flex items-center gap-1.5 text-xs font-bold bg-slate-900 text-white px-4 py-2 rounded-lg hover:bg-emerald-600 shadow-md shadow-slate-200 transition-all hover:-translate-y-0.5"
-            >
-              <ShieldCheck size={14} />
-              核验通过
-            </button>
-          )}
-
-          {isVerified && (
-             <div className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center text-slate-300">
-                <ShieldCheck size={16} />
-             </div>
-          )}
-        </div>
+        <ActionButtons />
       </div>
     </div>
   );

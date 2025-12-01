@@ -7,7 +7,7 @@ import { StatsCard } from './components/StatsCard';
 import { Login } from './components/Login';
 import { INITIAL_TASKS, MOCK_USERS, PROJECTS } from './constants';
 import { Task, TabView, TaskStatus, ViewMode, Priority, User } from './types';
-import { CheckCircle2, Clock, ListTodo, Layers, Search, LayoutGrid, List as ListIcon, Filter } from 'lucide-react';
+import { CheckCircle2, Clock, ListTodo, Layers, Search, LayoutGrid, List as ListIcon, Filter, X } from 'lucide-react';
 
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -19,6 +19,7 @@ const App: React.FC = () => {
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [selectedProjectFilter, setSelectedProjectFilter] = useState<string>('All');
   const [selectedUserFilter, setSelectedUserFilter] = useState<string>('All');
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
   
   // Login Handler
   const handleLogin = (name: string) => {
@@ -67,6 +68,14 @@ const App: React.FC = () => {
     setTasks(prev => prev.map(t => 
       t.id === id 
         ? { ...t, status: TaskStatus.VERIFIED, verifiedAt: new Date() } 
+        : t
+    ));
+  };
+
+  const handleRejectTask = (id: string) => {
+    setTasks(prev => prev.map(t => 
+      t.id === id 
+        ? { ...t, status: TaskStatus.PENDING, completedAt: undefined } 
         : t
     ));
   };
@@ -258,9 +267,11 @@ const App: React.FC = () => {
               users={users} 
               onComplete={handleCompleteTask}
               onVerify={handleVerifyTask}
+              onReject={handleRejectTask}
               viewMode={viewMode}
               onClick={() => setSelectedTask(task)}
               currentUser={currentUser}
+              onImagePreview={setPreviewImage}
             />
           ))}
 
@@ -283,9 +294,11 @@ const App: React.FC = () => {
               users={users} 
               onComplete={handleCompleteTask}
               onVerify={handleVerifyTask}
+              onReject={handleRejectTask}
               viewMode={viewMode}
               onClick={() => setSelectedTask(task)}
               currentUser={currentUser}
+              onImagePreview={setPreviewImage}
             />
           ))}
           
@@ -318,9 +331,31 @@ const App: React.FC = () => {
         users={users}
         onComplete={handleCompleteTask}
         onVerify={handleVerifyTask}
+        onReject={handleRejectTask}
         onUpdate={handleUpdateTask}
         currentUser={currentUser}
       />
+
+      {/* Global Image Preview Lightbox */}
+      {previewImage && (
+        <div 
+          className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200"
+          onClick={() => setPreviewImage(null)}
+        >
+          <button 
+            onClick={() => setPreviewImage(null)}
+            className="absolute top-6 right-6 p-2 text-white/70 hover:text-white bg-white/10 hover:bg-white/20 rounded-full transition-colors"
+          >
+            <X size={24} />
+          </button>
+          <img 
+            src={previewImage} 
+            alt="Full preview" 
+            className="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl"
+            onClick={(e) => e.stopPropagation()} 
+          />
+        </div>
+      )}
     </div>
   );
 };

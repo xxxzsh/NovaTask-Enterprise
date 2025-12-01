@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Calendar, User as UserIcon, Check, ShieldCheck, Clock, Flag, Image as ImageIcon, Save, Upload } from 'lucide-react';
+import { X, Calendar, User as UserIcon, Check, ShieldCheck, Clock, Flag, Image as ImageIcon, Save, Upload, Copy, XCircle, Maximize2 } from 'lucide-react';
 import { Task, TaskStatus, User, Priority } from '../types';
 import { PROJECTS } from '../constants';
 import { UserSelector } from './UserSelector';
@@ -10,17 +10,56 @@ interface TaskDetailModalProps {
   users: User[];
   onComplete: (id: string) => void;
   onVerify: (id: string) => void;
+  onReject: (id: string) => void;
   onUpdate: (updatedTask: Task) => void;
   currentUser: User;
 }
 
-export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose, users, onComplete, onVerify, onUpdate, currentUser }) => {
+export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose, users, onComplete, onVerify, onReject, onUpdate, currentUser }) => {
   const [editedTask, setEditedTask] = useState<Task | null>(null);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isPasting, setIsPasting] = useState(false);
 
   useEffect(() => {
     setEditedTask(task);
   }, [task]);
+
+  // Paste Event Listener
+  useEffect(() => {
+    const handlePaste = (e: ClipboardEvent) => {
+      if (!editedTask) return;
+
+      const items = e.clipboardData?.items;
+      if (!items) return;
+
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].type.indexOf('image') !== -1) {
+          e.preventDefault(); // Prevent default if it's an image
+          setIsPasting(true);
+          
+          const blob = items[i].getAsFile();
+          if (blob) {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+              if (typeof event.target?.result === 'string') {
+                setEditedTask(prev => {
+                  if (!prev) return null;
+                  return { ...prev, images: [...(prev.images || []), event.target!.result as string] };
+                });
+                // Visual feedback timeout
+                setTimeout(() => setIsPasting(false), 500);
+              }
+            };
+            reader.readAsDataURL(blob);
+          }
+        }
+      }
+    };
+
+    window.addEventListener('paste', handlePaste);
+    return () => window.removeEventListener('paste', handlePaste);
+  }, [editedTask]); // We depend on editedTask to update state correctly
 
   if (!task || !editedTask) return null;
 
@@ -62,6 +101,16 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
     handleFieldChange('images', newImages);
   };
 
+  // Safe date handling
+  const getSafeDateString = (date: Date | undefined) => {
+      if (!date) return '';
+      try {
+          return new Date(date).toISOString().split('T')[0];
+      } catch (e) {
+          return '';
+      }
+  };
+
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
       {/* Backdrop */}
@@ -72,6 +121,13 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
 
       {/* Modal */}
       <div className="relative bg-white rounded-2xl w-full max-w-3xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
+        {/* Paste Overlay Indicator */}
+        <div className={`absolute inset-0 bg-indigo-500/10 z-50 pointer-events-none flex items-center justify-center transition-opacity duration-300 ${isPasting ? 'opacity-100' : 'opacity-0'}`}>
+           <div className="bg-indigo-600 text-white px-6 py-3 rounded-xl font-bold shadow-xl animate-bounce">
+              正在粘贴图片...
+           </div>
+        </div>
+
         {/* Header */}
         <div className="px-8 py-6 border-b border-slate-100 flex justify-between items-start bg-slate-50/50">
           <div className="flex-1 mr-4">
@@ -135,24 +191,44 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
                   </h3>
                   <div className="flex flex-wrap gap-3">
                     {editedTask.images?.map((img, idx) => (
-                      <div key={idx} className="relative w-24 h-24 rounded-lg overflow-hidden border border-slate-200 group">
-                        <img src={img} alt={`Attachment ${idx}`} className="w-full h-full object-cover" />
+                      <div 
+                        key={idx} 
+                        className="relative w-24 h-24 rounded-lg overflow-hidden border border-slate-200 group bg-slate-100"
+                      >
+                         {/* Image Thumbnail */}
+                        <img 
+                          src={img} 
+                          alt={`Attachment ${idx}`} 
+                          className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" 
+                        />
+                        
+                         {/* Click Area for Zoom */}
+                        <div 
+                          className="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-colors cursor-zoom-in"
+                          onClick={() => setPreviewImage(img)}
+                        ></div>
+
+                         {/* Delete Button - Top Right */}
                         <button 
                           type="button"
-                          onClick={() => removeImage(idx)}
-                          className="absolute inset-0 bg-black/40 hidden group-hover:flex items-center justify-center text-white"
+                          onClick={(e) => { e.stopPropagation(); removeImage(idx); }}
+                          className="absolute top-1.5 right-1.5 p-1 bg-white/90 text-slate-400 hover:text-rose-500 hover:bg-white rounded-md shadow-sm opacity-0 group-hover:opacity-100 transition-all z-10"
+                          title="删除图片"
                         >
-                          <X size={16} />
+                          <X size={14} />
                         </button>
                       </div>
                     ))}
                     <button 
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
-                      className="w-24 h-24 rounded-lg border-2 border-dashed border-slate-300 flex flex-col items-center justify-center text-slate-400 hover:border-indigo-500 hover:text-indigo-500 transition-colors bg-slate-50 hover:bg-indigo-50/50"
+                      className="w-24 h-24 rounded-lg border-2 border-dashed border-slate-300 flex flex-col items-center justify-center text-slate-400 hover:border-indigo-500 hover:text-indigo-500 transition-colors bg-slate-50 hover:bg-indigo-50/50 relative overflow-hidden group"
                     >
                       <Upload size={18} />
-                      <span className="text-[10px] mt-1">添加</span>
+                      <span className="text-[10px] mt-1 font-medium">添加图片</span>
+                      <div className="absolute inset-x-0 bottom-0 bg-indigo-50 text-[9px] text-indigo-500 text-center py-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                        支持 Ctrl+V
+                      </div>
                     </button>
                     <input 
                       type="file" 
@@ -230,18 +306,17 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
 
                <div>
                  <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-2">截止日期</label>
-                 <div className="flex items-center gap-2 text-slate-700 font-medium bg-white border border-slate-200 px-4 py-3 rounded-xl relative">
-                   <Calendar size={18} className="text-slate-400 pointer-events-none" />
+                 <div className="flex items-center gap-2 text-slate-700 font-medium bg-white border border-slate-200 px-4 py-3 rounded-xl hover:border-indigo-500 transition-colors">
+                   <Calendar size={18} className="text-slate-400 flex-shrink-0" />
                    <input 
                     type="date"
-                    value={editedTask.dueDate ? new Date(editedTask.dueDate).toISOString().split('T')[0] : ''}
+                    value={getSafeDateString(editedTask.dueDate)}
                     onChange={(e) => {
                       const val = e.target.value;
                       handleFieldChange('dueDate', val ? new Date(val) : undefined);
                     }}
-                    className="absolute inset-0 opacity-0 cursor-pointer w-full h-full" 
+                    className="bg-transparent outline-none w-full text-sm text-slate-700 font-sans" 
                    />
-                   <span className="pointer-events-none">{editedTask.dueDate ? new Date(editedTask.dueDate).toLocaleDateString() : '无截止日期'}</span>
                  </div>
                </div>
             </div>
@@ -269,17 +344,47 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, onClose,
               </button>
              )}
              {canVerify && (
-              <button 
-                onClick={() => { onVerify(task.id); onClose(); }}
-                className="flex items-center justify-center gap-2 bg-emerald-600 text-white px-8 py-3 rounded-xl hover:bg-emerald-700 font-medium transition-all shadow-lg shadow-emerald-200"
-              >
-                <ShieldCheck size={18} />
-                通过核验
-              </button>
+               <>
+                <button 
+                  onClick={() => { onReject(task.id); onClose(); }}
+                  className="flex items-center justify-center gap-2 bg-rose-50 text-rose-600 px-6 py-3 rounded-xl hover:bg-rose-100 font-medium transition-all border border-rose-100"
+                >
+                  <XCircle size={18} />
+                  驳回重做
+                </button>
+                <button 
+                  onClick={() => { onVerify(task.id); onClose(); }}
+                  className="flex items-center justify-center gap-2 bg-emerald-600 text-white px-8 py-3 rounded-xl hover:bg-emerald-700 font-medium transition-all shadow-lg shadow-emerald-200"
+                >
+                  <ShieldCheck size={18} />
+                  通过核验
+                </button>
+              </>
              )}
            </div>
         </div>
       </div>
+
+      {/* Lightbox Overlay */}
+      {previewImage && (
+        <div 
+          className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200"
+          onClick={() => setPreviewImage(null)}
+        >
+          <button 
+            onClick={() => setPreviewImage(null)}
+            className="absolute top-6 right-6 p-2 text-white/70 hover:text-white bg-white/10 hover:bg-white/20 rounded-full transition-colors"
+          >
+            <X size={24} />
+          </button>
+          <img 
+            src={previewImage} 
+            alt="Full preview" 
+            className="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl"
+            onClick={(e) => e.stopPropagation()} 
+          />
+        </div>
+      )}
     </div>
   );
 };

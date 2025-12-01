@@ -21,6 +21,8 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({ isOpen, onClos
   const [dueDate, setDueDate] = useState('');
   const [priority, setPriority] = useState<Priority>(Priority.MEDIUM);
   const [images, setImages] = useState<string[]>([]);
+  const [isPasting, setIsPasting] = useState(false);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -37,6 +39,38 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({ isOpen, onClos
       setExecutorIds([]);
     }
   }, [isOpen, users]);
+
+  // Paste Event Listener
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handlePaste = (e: ClipboardEvent) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].type.indexOf('image') !== -1) {
+          e.preventDefault();
+          setIsPasting(true);
+          
+          const blob = items[i].getAsFile();
+          if (blob) {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+              if (typeof event.target?.result === 'string') {
+                setImages(prev => [...prev, event.target!.result as string]);
+                setTimeout(() => setIsPasting(false), 500);
+              }
+            };
+            reader.readAsDataURL(blob);
+          }
+        }
+      }
+    };
+
+    window.addEventListener('paste', handlePaste);
+    return () => window.removeEventListener('paste', handlePaste);
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -92,6 +126,13 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({ isOpen, onClos
 
       {/* Modal Content */}
       <div className="relative bg-white rounded-2xl w-full max-w-2xl shadow-2xl transform transition-all scale-100 overflow-hidden flex flex-col max-h-[90vh]">
+        {/* Paste Overlay Indicator */}
+        <div className={`absolute inset-0 bg-indigo-500/10 z-50 pointer-events-none flex items-center justify-center transition-opacity duration-300 ${isPasting ? 'opacity-100' : 'opacity-0'}`}>
+           <div className="bg-indigo-600 text-white px-6 py-3 rounded-xl font-bold shadow-xl animate-bounce">
+              正在粘贴图片...
+           </div>
+        </div>
+
         <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50 flex-shrink-0">
           <h2 className="text-lg font-bold text-slate-800">新建项目待办</h2>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 transition-colors">
@@ -129,24 +170,44 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({ isOpen, onClos
                 <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">附件图片</label>
                 <div className="flex flex-wrap gap-3">
                   {images.map((img, idx) => (
-                    <div key={idx} className="relative w-20 h-20 rounded-lg overflow-hidden border border-slate-200 group">
-                      <img src={img} alt="preview" className="w-full h-full object-cover" />
+                    <div 
+                      key={idx} 
+                      className="relative w-20 h-20 rounded-lg overflow-hidden border border-slate-200 group bg-slate-100"
+                    >
+                      {/* Image Thumbnail */}
+                      <img 
+                        src={img} 
+                        alt="preview" 
+                        className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" 
+                      />
+                      
+                      {/* Click Area for Zoom */}
+                      <div 
+                        className="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-colors cursor-zoom-in"
+                        onClick={() => setPreviewImage(img)}
+                      ></div>
+
+                      {/* Delete Button - Top Right */}
                       <button 
                         type="button"
-                        onClick={() => removeImage(idx)}
-                        className="absolute inset-0 bg-black/40 hidden group-hover:flex items-center justify-center text-white"
+                        onClick={(e) => { e.stopPropagation(); removeImage(idx); }}
+                        className="absolute top-1 right-1 p-1 bg-white/90 text-slate-400 hover:text-rose-500 hover:bg-white rounded shadow-sm opacity-0 group-hover:opacity-100 transition-all z-10"
+                        title="删除图片"
                       >
-                        <X size={16} />
+                        <X size={12} />
                       </button>
                     </div>
                   ))}
                   <button 
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    className="w-20 h-20 rounded-lg border-2 border-dashed border-slate-300 flex flex-col items-center justify-center text-slate-400 hover:border-indigo-500 hover:text-indigo-500 transition-colors bg-slate-50 hover:bg-indigo-50/50"
+                    className="w-20 h-20 rounded-lg border-2 border-dashed border-slate-300 flex flex-col items-center justify-center text-slate-400 hover:border-indigo-500 hover:text-indigo-500 transition-colors bg-slate-50 hover:bg-indigo-50/50 relative overflow-hidden group"
                   >
                     <Upload size={18} />
                     <span className="text-[10px] mt-1">上传</span>
+                    <div className="absolute inset-x-0 bottom-0 bg-indigo-50 text-[8px] text-indigo-500 text-center py-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                      支持 Ctrl+V
+                    </div>
                   </button>
                   <input 
                     type="file" 
@@ -241,6 +302,27 @@ export const CreateTaskModal: React.FC<CreateTaskModalProps> = ({ isOpen, onClos
           </div>
         </form>
       </div>
+
+       {/* Lightbox Overlay */}
+       {previewImage && (
+        <div 
+          className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200"
+          onClick={() => setPreviewImage(null)}
+        >
+          <button 
+            onClick={() => setPreviewImage(null)}
+            className="absolute top-6 right-6 p-2 text-white/70 hover:text-white bg-white/10 hover:bg-white/20 rounded-full transition-colors"
+          >
+            <X size={24} />
+          </button>
+          <img 
+            src={previewImage} 
+            alt="Full preview" 
+            className="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl"
+            onClick={(e) => e.stopPropagation()} 
+          />
+        </div>
+      )}
     </div>
   );
 };

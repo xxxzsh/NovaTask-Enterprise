@@ -1,5 +1,5 @@
 import React from 'react';
-import { Calendar, Check, ShieldCheck, Clock, ArrowRight, Flag, AlertCircle, Image as ImageIcon } from 'lucide-react';
+import { Calendar, Check, ShieldCheck, Clock, ArrowRight, Flag, AlertCircle, Image as ImageIcon, XCircle } from 'lucide-react';
 import { Task, TaskStatus, User, ViewMode, Priority } from '../types';
 
 interface TaskCardProps {
@@ -7,12 +7,14 @@ interface TaskCardProps {
   users: User[];
   onComplete: (id: string) => void;
   onVerify: (id: string) => void;
+  onReject: (id: string) => void;
   viewMode: ViewMode;
   onClick: () => void;
   currentUser: User;
+  onImagePreview: (url: string) => void;
 }
 
-export const TaskCard: React.FC<TaskCardProps> = ({ task, users, onComplete, onVerify, viewMode, onClick, currentUser }) => {
+export const TaskCard: React.FC<TaskCardProps> = ({ task, users, onComplete, onVerify, onReject, viewMode, onClick, currentUser, onImagePreview }) => {
   const responsible = users.find(u => u.id === task.responsibleId);
   
   // Map all executors
@@ -66,13 +68,22 @@ export const TaskCard: React.FC<TaskCardProps> = ({ task, users, onComplete, onV
         </button>
       )}
       {canVerify && (
-        <button 
-          onClick={(e) => { e.stopPropagation(); onVerify(task.id); }}
-          className="flex items-center gap-1.5 text-xs font-bold bg-slate-900 text-white px-3 py-1.5 rounded-lg hover:bg-emerald-600 shadow-md shadow-slate-200 transition-all hover:-translate-y-0.5"
-        >
-          <ShieldCheck size={14} />
-          核验
-        </button>
+        <>
+          <button 
+            onClick={(e) => { e.stopPropagation(); onReject(task.id); }}
+            className="flex items-center gap-1.5 text-xs font-bold bg-white border border-rose-200 text-rose-600 px-3 py-1.5 rounded-lg hover:bg-rose-50 hover:border-rose-300 transition-all shadow-sm"
+          >
+            <XCircle size={14} />
+            驳回
+          </button>
+          <button 
+            onClick={(e) => { e.stopPropagation(); onVerify(task.id); }}
+            className="flex items-center gap-1.5 text-xs font-bold bg-slate-900 text-white px-3 py-1.5 rounded-lg hover:bg-emerald-600 shadow-md shadow-slate-200 transition-all hover:-translate-y-0.5"
+          >
+            <ShieldCheck size={14} />
+            核验
+          </button>
+        </>
       )}
       {isVerified && (
         <span className="text-emerald-600 flex items-center gap-1 text-xs font-bold bg-emerald-50 px-2.5 py-1 rounded-md border border-emerald-100">
@@ -132,10 +143,25 @@ export const TaskCard: React.FC<TaskCardProps> = ({ task, users, onComplete, onV
           </div>
 
           <div className="col-span-3 text-xs text-slate-500 flex items-center gap-2">
-            {task.images && task.images.length > 0 && (
-              <ImageIcon size={14} className="text-slate-400 flex-shrink-0" />
+            {task.images && task.images.length > 0 ? (
+               <div className="flex -space-x-2 hover:space-x-1 transition-all duration-300 py-1">
+                  {task.images.slice(0, 4).map((img, idx) => (
+                    <img 
+                      key={idx} 
+                      src={img} 
+                      className="w-8 h-8 rounded-lg border-2 border-white object-cover shadow-sm cursor-zoom-in hover:scale-150 hover:z-20 hover:border-indigo-100 transition-all"
+                      onClick={(e) => { e.stopPropagation(); onImagePreview(img); }}
+                    />
+                  ))}
+                  {task.images.length > 4 && (
+                    <div className="w-8 h-8 rounded-lg border-2 border-white bg-slate-100 flex items-center justify-center text-[9px] font-bold text-slate-500">
+                      +{task.images.length - 4}
+                    </div>
+                  )}
+               </div>
+            ) : (
+              <span className="truncate" title={task.description}>{task.description}</span>
             )}
-            <span className="truncate" title={task.description}>{task.description}</span>
           </div>
 
           <div className="col-span-2 flex justify-center">
@@ -187,13 +213,23 @@ export const TaskCard: React.FC<TaskCardProps> = ({ task, users, onComplete, onV
         <h3 className={`text-lg font-bold text-slate-800 mb-2 transition-colors group-hover:text-indigo-600`}>
           {task.title}
         </h3>
-        <p className={`text-sm text-slate-500 leading-relaxed line-clamp-2`}>
+        <p className={`text-sm text-slate-500 leading-relaxed line-clamp-2 mb-3`}>
           {task.description}
         </p>
+        
+        {/* Task Images in Grid View */}
         {task.images && task.images.length > 0 && (
-           <div className="absolute top-0 right-0 p-1 bg-white/80 backdrop-blur rounded-lg border border-slate-100">
-              <ImageIcon size={14} className="text-indigo-500" />
-           </div>
+          <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide mask-linear-fade">
+             {task.images.map((img, idx) => (
+                <div key={idx} className="relative flex-shrink-0 group/img">
+                   <img 
+                     src={img} 
+                     className="h-16 w-24 object-cover rounded-lg border border-slate-100 cursor-zoom-in hover:opacity-90 transition-opacity" 
+                     onClick={(e) => { e.stopPropagation(); onImagePreview(img); }}
+                   />
+                </div>
+             ))}
+          </div>
         )}
       </div>
 

@@ -1,18 +1,24 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { TaskCard } from './components/TaskCard';
 import { CreateTaskModal } from './components/CreateTaskModal';
 import { TaskDetailModal } from './components/TaskDetailModal';
 import { StatsCard } from './components/StatsCard';
 import { Login } from './components/Login';
-import { INITIAL_TASKS, MOCK_USERS, PROJECTS } from './constants';
+import { PROJECTS } from './constants';
 import { Task, TabView, TaskStatus, ViewMode, Priority, User } from './types';
-import { CheckCircle2, Clock, ListTodo, Layers, Search, LayoutGrid, List as ListIcon, Filter, X } from 'lucide-react';
+import { CheckCircle2, Clock, ListTodo, Layers, LayoutGrid, List as ListIcon, Filter, X } from 'lucide-react';
+import { db } from './db';
+import { useLiveQuery } from 'dexie-react-hooks';
+
+// We need a simple wrapper for dexie-react-hooks if not available via import map directly, 
+// but since we added dexie, we can use standard React useEffect/useState for data fetching 
+// to avoid extra dependency complexity in this environment.
 
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [users, setUsers] = useState<User[]>(MOCK_USERS);
-  const [tasks, setTasks] = useState<Task[]>(INITIAL_TASKS);
+  const [users, setUsers] = useState<User[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
   const [currentTab, setCurrentTab] = useState<TabView>('dashboard');
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -20,11 +26,37 @@ const App: React.FC = () => {
   const [selectedProjectFilter, setSelectedProjectFilter] = useState<string>('All');
   const [selectedUserFilter, setSelectedUserFilter] = useState<string>('All');
   const [previewImage, setPreviewImage] = useState<string | null>(null);
-  
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Initialize DB and load data
+  useEffect(() => {
+    const initData = async () => {
+      await db.seed();
+      await refreshData();
+      
+      // Check for saved user session
+      const savedUserId = localStorage.getItem('nova_user_id');
+      if (savedUserId) {
+        const user = await db.users.get(savedUserId);
+        if (user) setCurrentUser(user);
+      }
+      setIsLoading(false);
+    };
+    initData();
+  }, []);
+
+  const refreshData = async () => {
+    const allTasks = await db.tasks.toArray();
+    const allUsers = await db.users.toArray();
+    setTasks(allTasks);
+    setUsers(allUsers);
+  };
+
   // Login Handler
-  const handleLogin = (name: string) => {
-    // Check if user exists (case-insensitive for better UX, but storing as entered)
-    let user = users.find(u => u.name === name);
+  const handleLogin = async (name: string) => {
+    // Check if user exists (case-insensitive for better UX)
+    const allUsers = await db.users.toArray();
+    let user = allUsers.find(u => u.name.toLowerCase() === name.toLowerCase());
     
     if (!user) {
       // Create new user if not found
@@ -33,51 +65,65 @@ const App: React.FC = () => {
         name: name,
         avatar: `https://api.dicebear.com/9.x/micah/svg?seed=${name}&backgroundColor=f1f5f9`
       };
+      await db.users.add(user);
       setUsers(prev => [...prev, user!]);
     }
     
     setCurrentUser(user);
+    localStorage.setItem('nova_user_id', user.id);
   };
 
   const handleLogout = () => {
     setCurrentUser(null);
+    localStorage.removeItem('nova_user_id');
   };
 
-  // Actions
-  const handleAddTask = (newTask: Task) => {
-    setTasks(prev => [newTask, ...prev]);
+  // Database Actions
+  const handleAddTask = async (newTask: Task) => {
+    await db.tasks.add(newTask);
+    await refreshData();
   };
 
-  const handleUpdateTask = (updatedTask: Task) => {
-    setTasks(prev => prev.map(t => t.id === updatedTask.id ? updatedTask : t));
-    // If the currently selected task is updated, update the selection state too
+  const handleUpdateTask = async (updatedTask: Task) => {
+    await db.tasks.put(updatedTask);
+    await refreshData();
+    // Update selected task view
     if (selectedTask?.id === updatedTask.id) {
         setSelectedTask(updatedTask);
     }
   };
 
-  const handleCompleteTask = (id: string) => {
-    setTasks(prev => prev.map(t => 
-      t.id === id 
-        ? { ...t, status: TaskStatus.COMPLETED, completedAt: new Date() } 
-        : t
-    ));
+  const handleCompleteTask = async (id: string) => {
+    const task = tasks.find(t => t.id === id);
+    if (task) {
+      await db.tasks.update(id, { 
+        status: TaskStatus.COMPLETED, 
+        completedAt: new Date() 
+      });
+      await refreshData();
+    }
   };
 
-  const handleVerifyTask = (id: string) => {
-    setTasks(prev => prev.map(t => 
-      t.id === id 
-        ? { ...t, status: TaskStatus.VERIFIED, verifiedAt: new Date() } 
-        : t
-    ));
+  const handleVerifyTask = async (id: string) => {
+    const task = tasks.find(t => t.id === id);
+    if (task) {
+      await db.tasks.update(id, { 
+        status: TaskStatus.VERIFIED, 
+        verifiedAt: new Date() 
+      });
+      await refreshData();
+    }
   };
 
-  const handleRejectTask = (id: string) => {
-    setTasks(prev => prev.map(t => 
-      t.id === id 
-        ? { ...t, status: TaskStatus.PENDING, completedAt: undefined } 
-        : t
-    ));
+  const handleRejectTask = async (id: string) => {
+    const task = tasks.find(t => t.id === id);
+    if (task) {
+      await db.tasks.update(id, { 
+        status: TaskStatus.PENDING, 
+        completedAt: undefined 
+      });
+      await refreshData();
+    }
   };
 
   // Derived State
@@ -94,7 +140,7 @@ const App: React.FC = () => {
   const { activeTasks, doneTasks } = useMemo(() => {
     let baseTasks = tasks;
 
-    // 1. Filter by User (Assignee/Executor or Verifier)
+    // 1. Filter by User
     if (selectedUserFilter !== 'All') {
       baseTasks = baseTasks.filter(t => 
         (t.executorIds && t.executorIds.includes(selectedUserFilter)) || 
@@ -102,21 +148,18 @@ const App: React.FC = () => {
       );
     }
     
-    // 2. Filter by Project (Applied to 'projects' AND 'completed' tabs now)
+    // 2. Filter by Project
     if ((currentTab === 'projects' || currentTab === 'completed') && selectedProjectFilter !== 'All') {
        baseTasks = baseTasks.filter(t => t.projectName === selectedProjectFilter);
     }
     
     // 3. Split based on Tabs
     if (currentTab === 'completed') {
-       // In Archive, show ONLY Verified tasks
        const archived = baseTasks.filter(t => t.status === TaskStatus.VERIFIED);
-       // Sort archived by verified time
        archived.sort((a,b) => new Date(b.verifiedAt || 0).getTime() - new Date(a.verifiedAt || 0).getTime());
        return { activeTasks: [], doneTasks: archived };
     }
 
-    // Sort function: Priority (High>Med>Low) -> Status (Pending>Completed) -> Date
     const sortFn = (a: Task, b: Task) => {
        const pScore = { [Priority.HIGH]: 3, [Priority.MEDIUM]: 2, [Priority.LOW]: 1 };
        if (pScore[a.priority] !== pScore[b.priority]) return pScore[b.priority] - pScore[a.priority];
@@ -129,11 +172,21 @@ const App: React.FC = () => {
 
     const active = baseTasks.filter(t => t.status !== TaskStatus.VERIFIED).sort(sortFn);
     
-    // In Dashboard/Projects view, "doneTasks" acts as the bottom section for verified tasks that pass filters
     const done = baseTasks.filter(t => t.status === TaskStatus.VERIFIED).sort((a,b) => new Date(b.verifiedAt || 0).getTime() - new Date(a.verifiedAt || 0).getTime());
 
     return { activeTasks: active, doneTasks: done };
   }, [tasks, currentTab, selectedProjectFilter, selectedUserFilter]);
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#f8fafc]">
+        <div className="flex flex-col items-center animate-pulse">
+           <div className="w-12 h-12 bg-slate-200 rounded-xl mb-4"></div>
+           <div className="h-4 w-32 bg-slate-200 rounded"></div>
+        </div>
+      </div>
+    );
+  }
 
   if (!currentUser) {
     return <Login onLogin={handleLogin} users={users} />;
@@ -150,7 +203,6 @@ const App: React.FC = () => {
       />
 
       <main className="flex-1 p-8 lg:p-12 overflow-y-auto h-screen relative">
-        {/* Decorative Background Blob */}
         <div className="fixed top-0 right-0 w-[500px] h-[500px] bg-indigo-50/50 rounded-full blur-3xl -z-10 pointer-events-none translate-x-1/3 -translate-y-1/3"></div>
 
         <header className="flex justify-between items-end mb-10">
@@ -164,7 +216,6 @@ const App: React.FC = () => {
           </div>
           
           <div className="flex items-center gap-4">
-             {/* User Filter Dropdown */}
             <div className="flex items-center gap-2 bg-white px-3 py-2 rounded-xl border border-slate-200 shadow-sm text-sm">
                <Filter size={14} className="text-slate-400" />
                <select 
@@ -179,7 +230,6 @@ const App: React.FC = () => {
                </select>
             </div>
 
-            {/* View Mode Toggle */}
             <div className="flex bg-white p-1 rounded-xl border border-slate-200 shadow-sm">
               <button 
                 onClick={() => setViewMode('grid')}
@@ -199,7 +249,6 @@ const App: React.FC = () => {
           </div>
         </header>
 
-        {/* Dashboard Stats Row */}
         {currentTab === 'dashboard' && (
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-12">
             <StatsCard 
@@ -230,7 +279,6 @@ const App: React.FC = () => {
           </div>
         )}
 
-        {/* Project Filter Toolbar (Visible in Projects AND Completed Tabs) */}
         {(currentTab === 'projects' || currentTab === 'completed') && (
           <div className="flex items-center gap-3 mb-8 overflow-x-auto pb-2 scrollbar-hide">
             <button 
@@ -257,9 +305,7 @@ const App: React.FC = () => {
           </div>
         )}
 
-        {/* Task List Grid/List */}
         <div className={`pb-20 ${viewMode === 'grid' ? 'grid grid-cols-1 xl:grid-cols-2 gap-6' : 'flex flex-col gap-0 rounded-2xl overflow-hidden shadow-sm border border-slate-100'}`}>
-          {/* Active Tasks */}
           {activeTasks.map(task => (
             <TaskCard 
               key={task.id} 
@@ -275,7 +321,6 @@ const App: React.FC = () => {
             />
           ))}
 
-          {/* Separator if both exist */}
           {activeTasks.length > 0 && doneTasks.length > 0 && currentTab !== 'completed' && (
             <div className={`col-span-full py-6 flex items-center gap-4 ${viewMode === 'list' ? 'bg-[#f8fafc]' : ''}`}>
                <div className="h-px bg-slate-200 flex-1"></div>
@@ -286,7 +331,6 @@ const App: React.FC = () => {
             </div>
           )}
 
-          {/* Done Tasks (In Dashboard they are at bottom, in Archive they are main) */}
           {doneTasks.map(task => (
             <TaskCard 
               key={task.id} 
@@ -336,7 +380,6 @@ const App: React.FC = () => {
         currentUser={currentUser}
       />
 
-      {/* Global Image Preview Lightbox */}
       {previewImage && (
         <div 
           className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200"
